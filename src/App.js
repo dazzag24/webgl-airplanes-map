@@ -8,13 +8,13 @@ import Airplane from "./airplane-icon.jpg";
 import destinationPoint from "./destinationPoint";
 
 // Set your mapbox access token here
-const MAPBOX_ACCESS_TOKEN =
+const MAPBOX_ACCESS_TOKEN = 
     "pk.eyJ1Ijoic3dpemVjIiwiYSI6ImNqcHdnaDR1MDB0bWozeG1tY28wcHVoM2UifQ.RxzaHH4i1_U32eiWoOc_jQ";
 
 // Initial viewport settings
 const initialViewState = {
-    longitude: -122.41669,
-    latitude: 37.7853,
+    longitude: 0.0,
+    latitude: 52.0,
     zoom: 5,
     pitch: 0,
     bearing: 0
@@ -27,19 +27,21 @@ class App extends Component {
     currentFrame = null;
     timer = null;
     fetchEverySeconds = 10;
-    framesPerFetch = this.fetchEverySeconds * 30; // 60fps, 10 second intervals
+    framesPerFetch = this.fetchEverySeconds * 30; // 30fps, 10 second intervals
 
     componentDidMount() {
         this.fetchData();
     }
 
     fetchData = () => {
-        d3.json("https://opensky-network.org/api/states/all").then(
+        //d3.json("https://opensky-network.org/api/states/all?").then(
+        d3.json("https://opensky-network.org/api/states/all?lamin=43.069&lomin=-13.975&lamax=61.164&lomax=30.806").then(
             ({ states }) =>
                 this.setState(
                     {
                         // from https://opensky-network.org/apidoc/rest.html#response
                         airplanes: states.map(d => ({
+                            icao24: d[0],
                             callsign: d[1],
                             longitude: d[5],
                             latitude: d[6],
@@ -52,7 +54,7 @@ class App extends Component {
                                 destinationPoint(
                                     d[5],
                                     d[6],
-                                    d[9] * this.fetchEverySeconds,
+                                    d[9] * this.fetchEverySeconds, // Speed x time = distance
                                     d[10]
                                 )
                             )
@@ -93,12 +95,26 @@ class App extends Component {
         this.setState({ airplanes });
     };
 
+    _renderTooltip() {
+        const {hoveredObject, pointerX, pointerY} = this.state || {};
+        return hoveredObject && (
+          <div style={{position: 'absolute', zIndex: 1, pointerEvents: 'none', left: pointerX, top: pointerY}}>
+            ICAO24: { hoveredObject.icao24 } <br></br>
+            Callsign: { hoveredObject.callsign } <br></br>
+            Country: { hoveredObject.origin_country } <br></br>
+            Velocity: { hoveredObject.velocity } <br></br>
+            Track: { hoveredObject.true_track } 
+          </div>
+        );
+      }
+
     render() {
         const layers = [
+            // http://deck.gl/#/documentation/deckgl-api-reference/layers/icon-layer
             new IconLayer({
                 id: "airplanes",
                 data: this.state.airplanes,
-                pickable: false,
+                pickable: true,
                 iconAtlas: Airplane,
                 iconMapping: {
                     airplane: {
@@ -111,17 +127,25 @@ class App extends Component {
                 sizeScale: 20,
                 getPosition: d => [d.longitude, d.latitude],
                 getIcon: d => "airplane",
-                getAngle: d => 45 + (d.true_track * 180) / Math.PI
+                getAngle: d => 45 + d.true_track,
+                onHover: info => this.setState({
+                    hoveredObject: info.object,
+                    pointerX: info.x,
+                    pointerY: info.y
+                  })
+                //onHover: info => console.log('Hovered:', info),
             })
         ];
 
         return (
-            <DeckGL
+            <DeckGL 
                 initialViewState={initialViewState}
                 controller={true}
-                layers={layers}
-            >
-                <StaticMap mapboxApiAccessToken={MAPBOX_ACCESS_TOKEN} />
+                layers={layers} >
+            { this._renderTooltip() }
+                <StaticMap 
+                    mapboxApiAccessToken={MAPBOX_ACCESS_TOKEN} 
+                    mapStyle="mapbox://styles/mapbox/satellite-streets-v10"/>
             </DeckGL>
         );
     }
